@@ -21,6 +21,7 @@ import { GitBranchProtectionProvider, IBranchProtectionProviderRegistry } from '
 import { debounce, memoize, sequentialize, throttle } from './decorators';
 import { Repository as BaseRepository, BlameInformation, Commit, CommitShortStat, GitError, IDotGit, LogFileOptions, LsTreeElement, PullOptions, RefQuery, Stash, Submodule, Worktree } from './git';
 import { GitHistoryProvider } from './historyProvider';
+import { getGitIgnoreAppendText, getGitIgnorePatterns } from './ignore';
 import { Operation, OperationKind, OperationManager, OperationResult } from './operation';
 import { CommitCommandsCenter, IPostCommitCommandsProviderRegistry } from './postCommitCommands';
 import { IPushErrorHandlerRegistry } from './pushError';
@@ -2725,25 +2726,27 @@ export class Repository implements Disposable {
 		return await this.run(Operation.GetCommitTemplate, async () => this.repository.getCommitTemplate());
 	}
 
-	async ignore(files: Uri[]): Promise<void> {
+	async ignore(files: Uri[], options: { directory?: boolean } = {}): Promise<void> {
 		return await this.run(Operation.Ignore, async () => {
-			const ignoreFile = `${this.repository.root}${path.sep}.gitignore`;
-			const textToAppend = files
-				.map(uri => relativePath(this.repository.root, uri.fsPath)
-					.replace(/\\|\[/g, match => match === '\\' ? '/' : `\\${match}`))
-				.join('\n');
+			const patterns = getGitIgnorePatterns(this.repository.root, files.map(uri => uri.fsPath), options.directory);
+			if (patterns.length === 0) {
+				return;
+			}
 
+			const ignoreFile = `${this.repository.root}${path.sep}.gitignore`;
 			const document = await new Promise(c => fs.exists(ignoreFile, c))
 				? await workspace.openTextDocument(ignoreFile)
 				: await workspace.openTextDocument(Uri.file(ignoreFile).with({ scheme: 'untitled' }));
 
-			await window.showTextDocument(document);
+			const textToAppend = getGitIgnoreAppendText(document.getText(), patterns);
+			if (!textToAppend) {
+				return;
+			}
 
+			await window.showTextDocument(document);
 			const edit = new WorkspaceEdit();
 			const lastLine = document.lineAt(document.lineCount - 1);
-			const text = lastLine.isEmptyOrWhitespace ? `${textToAppend}\n` : `\n${textToAppend}\n`;
-
-			edit.insert(document.uri, lastLine.range.end, text);
+			edit.insert(document.uri, lastLine.range.end, textToAppend);
 			await workspace.applyEdit(edit);
 			await document.save();
 		});
