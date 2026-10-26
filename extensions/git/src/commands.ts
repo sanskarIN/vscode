@@ -20,6 +20,7 @@ import { ApiRepository } from './api/api1';
 import { getRemoteSourceActions, pickRemoteSource } from './remoteSource';
 import { RemoteSourceAction } from './typings/git-base';
 import { CloneManager } from './cloneManager';
+import { getIgnoreDirectoryCandidate } from './ignore';
 import { getSafeNotificationMessage } from './notification';
 
 abstract class CheckoutCommandItem implements QuickPickItem {
@@ -4442,7 +4443,29 @@ export class CommandCenter {
 			return;
 		}
 
-		await this.runByRepository(resources, async (repository, resources) => repository.ignore(resources));
+		await this.runByRepository(resources, async (repository, resources) => {
+			const candidate = getIgnoreDirectoryCandidate(repository.root, resources.map(resource => resource.fsPath));
+			if (!candidate) {
+				await repository.ignore(resources);
+				return;
+			}
+
+			// A folder action in the SCM tree can provide every descendant file.
+			// Ask before broadening the ignore rule: a directory rule may match
+			// unselected files in addition to the current selection.
+			const folderLabel = l10n.t('Ignore Folder {0}', candidate.pattern);
+			const filesLabel = l10n.t('Ignore {0} Files Individually', candidate.fileCount);
+			const choice = await window.showQuickPick([
+				{ label: folderLabel, description: l10n.t('Ignore the entire folder, including unselected files') },
+				{ label: filesLabel, description: l10n.t('Only ignore the selected files') }
+			], { placeHolder: l10n.t('How should these files be added to .gitignore?') });
+
+			if (choice?.label === folderLabel) {
+				await repository.ignore([Uri.file(candidate.absolutePath)], { directory: true });
+			} else if (choice?.label === filesLabel) {
+				await repository.ignore(resources);
+			}
+		});
 	}
 
 	@command('git.revealInExplorer')
