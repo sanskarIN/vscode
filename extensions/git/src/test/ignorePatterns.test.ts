@@ -36,7 +36,7 @@ suite('git ignore pattern generation', () => {
 			['file@name', '/file@name'],
 			['file$name', '/file$name'],
 			['file(name)', '/file(name)'],
-			['file{name}', '/file{name'],
+			['file{name}', '/file{name}'],
 			['file^name', '/file^name'],
 			['file%name', '/file%name'],
 			['file&name', '/file&name'],
