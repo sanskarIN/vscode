@@ -106,7 +106,7 @@ export class VSDataTransfer implements IReadonlyVSDataTransfer {
 	 * This does not replace existing entries for `mimeType`.
 	 */
 	public append(mimeType: string, value: IDataTransferItem): void {
-		const existing = this._entries.get(mimeType);
+		const existing = this._entries.get(this.toKey(mimeType));
 		if (existing) {
 			existing.push(value);
 		} else {
